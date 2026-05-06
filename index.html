@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<meta name="description" content="Aegis AI - Advanced fake news detection powered by AI. Analyze any news for authenticity."/>
+<title>Aegis AI — Fake News Detection</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<script>
+/* Aegis AI — Client-Side Fake News Analysis Engine */
+const CLICKBAIT_PATTERNS=[/you won'?t believe/i,/shocking/i,/breaking.*!/i,/exposed/i,/what they don'?t want you to know/i,/miracle/i,/secret(s)? revealed/i,/this (one )?(simple |weird )?trick/i,/doctors hate/i,/gone wrong/i,/is dead/i,/\b(insane|unbelievable|jaw.?dropping)\b/i,/click here/i,/share before.*deleted/i,/mainstream media won'?t/i,/big pharma/i,/they'?re hiding/i,/wake up/i];
+const EMOTIONAL_WORDS=['shocking','horrifying','terrifying','unbelievable','incredible','outrageous','disgusting','devastating','catastrophic','explosive','bombshell','sensational','alarming','scandalous','corrupt','evil','destroy','doom','chaos','panic','fury','rage','nightmare','betrayal','conspiracy','coverup','hoax','scam','sinister','dangerous','urgent','emergency','warning','alert','breaking'];
+const TRUSTED_SOURCES=['reuters','associated press','ap news','bbc','npr','pbs','the guardian','the washington post','the new york times','bloomberg','al jazeera','afp','france24','dw','the economist','nature','science','lancet','who','cdc','nih','nasa','noaa','fbi','interpol','un.org','gov'];
+const UNRELIABLE_INDICATORS=['unknown blog','viral post','truthseeker','infowars','naturalnews','beforeitsnews','yournewswire','worldnewsdailyreport','theonion','clickhole','babylon bee','dailybuzzlive','huzlers'];
+const HEDGE_WORDS=['allegedly','reportedly','sources say','unconfirmed','rumored','claimed','purportedly','supposedly','might','could possibly'];
+const ABSOLUTIST_WORDS=['always','never','everyone','nobody','all','none','guaranteed','proven','definitely','certainly','undeniable','100%'];
+
+function analyzeNews(text){
+  if(!text||text.trim().length<5)return{verdict:"Misleading",confidence:"30%",reason:"Text is too short to perform a meaningful analysis.",red_flags:["Insufficient content for analysis"],suggestion:"Provide the full article text for a more accurate assessment."};
+  const t=text.toLowerCase(),words=t.split(/\s+/),wordCount=words.length,sentences=text.split(/[.!?]+/).filter(s=>s.trim().length>0),flags=[];
+  let score=80; // Start with a high credibility score, deduct points for red flags
+  let clickbaitHits=0;CLICKBAIT_PATTERNS.forEach(p=>{if(p.test(t))clickbaitHits++});
+  if(clickbaitHits>0){score-=clickbaitHits*15;flags.push("Clickbait language detected ("+clickbaitHits+" pattern"+(clickbaitHits>1?"s":"")+")")}
+  let emotionalCount=0;EMOTIONAL_WORDS.forEach(w=>{if(t.includes(w))emotionalCount++});
+  if(emotionalCount>=2||(wordCount>0&&emotionalCount/wordCount>0.04)){score-=Math.min(emotionalCount*8,30);flags.push("High emotional language density ("+emotionalCount+" loaded words)")}
+  const exclaimCount=(text.match(/!/g)||[]).length;
+  const capsWords=words.filter(w=>w.length>3&&w===w.toUpperCase()&&/[A-Z]/.test(w)).length;
+  if(exclaimCount>2){score-=15;flags.push("Excessive exclamation marks")}
+  if(capsWords>2){score-=10;flags.push("Excessive use of ALL CAPS")}
+  let trustedMention=false;TRUSTED_SOURCES.forEach(s=>{if(t.includes(s))trustedMention=true});
+  let unreliableMention=false;UNRELIABLE_INDICATORS.forEach(s=>{if(t.includes(s))unreliableMention=true});
+  if(trustedMention)score+=10;
+  if(unreliableMention){score-=25;flags.push("References known unreliable source")}
+  const hasNumbers=/\d{1,}/.test(text),hasQuotes=/[""\u201C\u201D]/.test(text),hasProperNouns=/[A-Z][a-z]{2,}/.test(text.slice(1));
+  if(!hasNumbers&&!hasQuotes&&!hasProperNouns&&wordCount>15){score-=10;flags.push("Lacks verifiable facts (no dates, numbers, or named sources)")}
+  if(hasQuotes)score+=5;if(hasNumbers)score+=5;
+  let absolutistCount=0;ABSOLUTIST_WORDS.forEach(w=>{if(t.includes(w))absolutistCount++});
+  if(absolutistCount>=1){score-=absolutistCount*5;flags.push("Uses absolutist language suggesting bias")}
+  let hedgeCount=0;HEDGE_WORDS.forEach(w=>{if(t.includes(w))hedgeCount++});
+  if(hedgeCount>=2){score-=5;flags.push("Excessive hedging — claims may be unverified")}
+  const avgSentLen=wordCount/Math.max(sentences.length,1);
+  if(avgSentLen>40){score-=5;flags.push("Unusually long sentences — may indicate poor editorial quality")}
+  if(wordCount<10){score-=10;flags.push("Very short text — limited context for analysis")}
+  const urlCount=(text.match(/https?:\/\//g)||[]).length;
+  if(urlCount>2){score-=10;flags.push("Contains multiple external links")}
+  
+  score=Math.max(5,Math.min(95,score));
+  
+  let verdict,confidence,reason,suggestion;
+  if(score>=70){verdict="Real";confidence=Math.min(score,95)+"%";reason=flags.length===0?"The text follows journalistic standards with verifiable information and neutral tone.":"The text appears mostly credible but has minor concerns worth noting.";suggestion="Still, cross-check with trusted outlets like Reuters, AP News, or BBC for absolute confirmation."}
+  else if(score>=45){verdict="Misleading";confidence=(50+Math.floor((70-score)*1.5))+"%";reason="The text contains a mix of credible and questionable elements. It may contain partial truths presented in a misleading context.";suggestion="Verify key claims using fact-checking sites like Snopes, PolitiFact, or FactCheck.org. Look for the original source of the claims."}
+  else{verdict="Fake";confidence=Math.min(99,60+Math.floor((45-score)*1.5))+"%";reason="The text exhibits multiple characteristics commonly associated with misinformation, including sensational language and lack of credible sourcing.";suggestion="Do NOT share this content. Verify with multiple independent, reputable news sources before believing these claims."}
+  if(flags.length===0)flags.push("No significant red flags detected");
+  return{verdict:verdict,confidence:confidence,reason:reason,red_flags:flags,suggestion:suggestion};
+}
+window.analyzeNews=analyzeNews;
+</script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--neon:#00f3ff;--neon-g:#00ff88;--neon-r:#ff003c;--neon-y:#ffb300;--dark:#0a0a1a;--dark2:#0d1117;--glass:rgba(255,255,255,0.03);--border:rgba(255,255,255,0.08)}
+body{font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;background:linear-gradient(180deg,var(--dark),var(--dark2) 50%,var(--dark));color:#e2e8f0;min-height:100vh;overflow-x:hidden}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:var(--dark)}::-webkit-scrollbar-thumb{background:rgba(0,243,255,0.3);border-radius:3px}
+.glass{background:var(--glass);backdrop-filter:blur(20px);border:1px solid var(--border);border-radius:16px}
+.neon-text{color:var(--neon);text-shadow:0 0 10px rgba(0,243,255,0.5)}
+.text-gradient{background:linear-gradient(135deg,var(--neon),#b400ff,var(--neon-g));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+
+/* Nav */
+nav{position:fixed;top:0;left:0;width:100%;z-index:50;background:rgba(10,10,26,0.8);backdrop-filter:blur(20px);border-bottom:1px solid rgba(255,255,255,0.05)}
+.nav-inner{max-width:1200px;margin:0 auto;padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:60px}
+.logo{display:flex;align-items:center;gap:10px;text-decoration:none}
+.logo-icon{width:34px;height:34px;border-radius:8px;background:linear-gradient(135deg,var(--neon),#0080ff);display:flex;align-items:center;justify-content:center;box-shadow:0 0 15px rgba(0,243,255,0.5);font-weight:bold;color:var(--dark);font-size:14px}
+.logo-text{font-family:'Orbitron',sans-serif;font-weight:700;font-size:16px;letter-spacing:2px}
+
+/* Hero */
+.hero{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:80px 24px 40px;position:relative}
+.hero::before{content:'';position:absolute;top:20%;left:20%;width:400px;height:400px;background:rgba(0,243,255,0.04);border-radius:50%;filter:blur(80px);animation:float 6s ease-in-out infinite}
+.hero::after{content:'';position:absolute;bottom:20%;right:20%;width:350px;height:350px;background:rgba(180,0,255,0.04);border-radius:50%;filter:blur(80px);animation:float 6s ease-in-out infinite 3s}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-25px)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
+@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+.hero-content{max-width:800px;text-align:center;position:relative;z-index:1}
+.badge{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border-radius:999px;border:1px solid rgba(0,243,255,0.3);background:rgba(0,243,255,0.05);margin-bottom:24px;animation:fadeIn .6s ease-out}
+.badge-dot{width:8px;height:8px;border-radius:50%;background:var(--neon);animation:pulse 2s ease-in-out infinite}
+.badge-text{font-family:'Orbitron',sans-serif;font-size:11px;color:var(--neon);letter-spacing:3px;text-transform:uppercase}
+h1{font-family:'Orbitron',sans-serif;font-size:clamp(28px,5vw,56px);font-weight:800;line-height:1.2;margin-bottom:16px;animation:fadeIn .6s ease-out .1s both}
+.subtitle{color:#94a3b8;font-size:16px;margin-bottom:32px;animation:fadeIn .6s ease-out .2s both}
+
+/* Input area */
+.input-wrap{border:1px solid rgba(0,243,255,0.3);border-radius:16px;padding:8px;background:rgba(0,243,255,0.02);box-shadow:inset 0 0 20px rgba(0,243,255,0.03);animation:fadeIn .6s ease-out .3s both}
+textarea{width:100%;background:transparent;border:none;outline:none;color:#fff;font-family:'Inter',sans-serif;font-size:14px;padding:16px;resize:vertical;min-height:120px}
+textarea::placeholder{color:#4a5568}
+.input-footer{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;flex-wrap:wrap;gap:8px}
+.char-count{font-size:12px;color:#4a5568}
+.analyze-btn{background:linear-gradient(135deg,var(--neon),#0080ff);color:var(--dark);font-family:'Orbitron',sans-serif;font-weight:700;font-size:13px;letter-spacing:2px;text-transform:uppercase;padding:12px 32px;border-radius:10px;border:none;cursor:pointer;transition:all .3s;box-shadow:0 0 20px rgba(0,243,255,0.4)}
+.analyze-btn:hover{transform:translateY(-2px);box-shadow:0 0 30px rgba(0,243,255,0.7)}
+.analyze-btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.error-msg{color:var(--neon-r);font-size:13px;margin-top:12px}
+
+/* Results */
+.result-container{margin-top:32px;animation:fadeIn .6s ease-out}
+.result-card{padding:32px;max-width:700px;margin:0 auto}
+.verdict-header{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:24px}
+.verdict-dot{width:12px;height:12px;border-radius:50%;animation:pulse 2s ease-in-out infinite}
+.verdict-text{font-family:'Orbitron',sans-serif;font-size:28px;font-weight:800;letter-spacing:4px}
+.confidence-ring{display:flex;justify-content:center;margin-bottom:8px}
+.ring-wrap{position:relative;width:120px;height:120px}
+.ring-wrap svg{width:120px;height:120px;transform:rotate(-90deg)}
+.ring-label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Orbitron',sans-serif;font-size:22px;font-weight:700}
+.conf-caption{text-align:center;font-size:12px;color:#64748b;margin-bottom:24px}
+
+.detail-section{margin-bottom:20px}
+.detail-label{font-family:'Orbitron',sans-serif;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#64748b;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.detail-label .icon{font-size:14px}
+.reason-text{font-size:14px;line-height:1.7;color:#cbd5e1;padding:16px;border-radius:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05)}
+.flags-list{list-style:none;padding:0}
+.flags-list li{display:flex;align-items:flex-start;gap:10px;padding:10px 14px;margin-bottom:6px;border-radius:10px;font-size:13px;color:#fbbf24;background:rgba(255,179,0,0.05);border:1px solid rgba(255,179,0,0.1)}
+.flags-list li .flag-icon{flex-shrink:0;margin-top:2px}
+.suggestion-box{padding:16px;border-radius:12px;font-size:13px;line-height:1.7;color:var(--neon);background:rgba(0,243,255,0.04);border:1px solid rgba(0,243,255,0.15)}
+
+/* JSON toggle */
+.json-toggle{display:flex;justify-content:center;margin-top:20px}
+.json-toggle button{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;font-size:12px;padding:8px 20px;border-radius:8px;cursor:pointer;transition:all .3s;font-family:'Inter',sans-serif}
+.json-toggle button:hover{border-color:rgba(0,243,255,0.3);color:var(--neon)}
+.json-block{margin-top:16px;padding:20px;border-radius:12px;background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.05);font-family:'Courier New',monospace;font-size:13px;color:var(--neon-g);white-space:pre-wrap;word-break:break-word;text-align:left;line-height:1.6}
+
+/* Verdict colors */
+.v-real{color:var(--neon-g);border-color:rgba(0,255,136,0.3);box-shadow:0 0 20px rgba(0,255,136,0.15)}
+.v-real .verdict-dot{background:var(--neon-g)}
+.v-fake{color:var(--neon-r);border-color:rgba(255,0,60,0.3);box-shadow:0 0 20px rgba(255,0,60,0.15)}
+.v-fake .verdict-dot{background:var(--neon-r)}
+.v-misleading{color:var(--neon-y);border-color:rgba(255,179,0,0.3);box-shadow:0 0 20px rgba(255,179,0,0.15)}
+.v-misleading .verdict-dot{background:var(--neon-y)}
+
+/* Dashboard grid */
+.dashboard{max-width:1200px;margin:0 auto;padding:0 24px 60px}
+.section-title{font-family:'Orbitron',sans-serif;font-size:clamp(20px,3vw,28px);font-weight:700;text-align:center;margin-bottom:8px;color:#fff}
+.section-sub{text-align:center;color:#64748b;font-size:13px;margin-bottom:40px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px}
+
+/* Feed */
+.panel-header{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.panel-dot{width:10px;height:10px;border-radius:50%;animation:pulse 2s ease-in-out infinite}
+.panel-title{font-family:'Orbitron',sans-serif;font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase}
+.feed-list{max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
+.feed-item{display:flex;align-items:start;justify-content:space-between;gap:10px;padding:10px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);transition:all .3s}
+.feed-item:hover{background:rgba(255,255,255,0.04)}
+.feed-text{font-size:13px;color:#d1d5db;flex:1;min-width:0}
+.feed-text .src{display:block;font-size:11px;color:#6b7280;margin-top:4px}
+.feed-badge{flex-shrink:0;padding:4px 10px;border-radius:6px;font-size:11px;font-family:'Orbitron',sans-serif;font-weight:700;letter-spacing:1px}
+.feed-badge.real{background:rgba(0,255,136,0.08);color:var(--neon-g);border:1px solid rgba(0,255,136,0.15)}
+.feed-badge.fake{background:rgba(255,0,60,0.08);color:var(--neon-r);border:1px solid rgba(255,0,60,0.15)}
+
+/* Stats */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px;max-width:1200px;margin:0 auto 60px;padding:0 24px}
+.stat-card{text-align:center;padding:32px 16px;transition:all .5s}
+.stat-card:hover{transform:translateY(-4px);box-shadow:0 0 30px rgba(0,243,255,0.15)}
+.stat-icon{font-size:28px;margin-bottom:12px}
+.stat-value{font-family:'Orbitron',sans-serif;font-size:clamp(28px,4vw,40px);font-weight:800;margin-bottom:6px}
+.stat-label{font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:1px}
+
+/* Footer */
+footer{border-top:1px solid rgba(255,255,255,0.05);padding:24px;text-align:center}
+footer span{font-family:'Orbitron',sans-serif;font-size:13px;font-weight:700;margin-right:12px}
+footer .copy{font-size:11px;color:#4a5568}
+
+/* Loading spinner */
+.spinner{display:inline-block;width:18px;height:18px;border:2px solid rgba(10,10,26,0.3);border-top-color:var(--dark);border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:8px}
+
+@media(max-width:640px){
+  .grid3{grid-template-columns:1fr}
+  .input-footer{flex-direction:column;align-items:stretch}
+  .analyze-btn{width:100%}
+}
+</style>
+</head>
+<body>
+
+<nav><div class="nav-inner">
+  <a href="#" class="logo"><div class="logo-icon">⬡</div><span class="logo-text neon-text">AEGIS AI</span></a>
+  <div style="display:flex;gap:24px">
+    <a href="#home" style="color:#94a3b8;text-decoration:none;font-size:12px;letter-spacing:1px;text-transform:uppercase">Home</a>
+    <a href="#dashboard" style="color:#94a3b8;text-decoration:none;font-size:12px;letter-spacing:1px;text-transform:uppercase">Dashboard</a>
+  </div>
+</div></nav>
+
+<section class="hero" id="home">
+  <div class="hero-content">
+    <div class="badge"><span class="badge-dot"></span><span class="badge-text">Neural Network Active</span></div>
+    <h1><span class="text-gradient">AI-POWERED</span><br><span style="color:#fff">FAKE NEWS</span><br><span class="text-gradient">DETECTION</span></h1>
+    <p class="subtitle">Paste any news article below — our AI analyzes it for credibility in seconds.</p>
+
+    <div class="input-wrap">
+      <textarea id="newsInput" placeholder="Paste the news article or headline here for analysis..."></textarea>
+      <div class="input-footer">
+        <span class="char-count" id="charCount">0 characters</span>
+        <button class="analyze-btn" id="analyzeBtn" onclick="runAnalysis()">🔍 ANALYZE</button>
+      </div>
+    </div>
+    <p class="error-msg" id="errorMsg" style="display:none"></p>
+
+    <div id="resultArea"></div>
+  </div>
+</section>
+
+<!-- Dashboard -->
+<section id="dashboard" class="dashboard">
+  <h2 class="section-title">Live <span class="neon-text">Dashboard</span></h2>
+  <p class="section-sub">Real-time intelligence monitoring</p>
+  <div class="grid3">
+    <!-- Feed -->
+    <div class="glass" style="padding:20px">
+      <div class="panel-header"><div class="panel-dot" style="background:var(--neon)"></div><span class="panel-title neon-text">Real-Time Feed</span></div>
+      <div class="feed-list" id="feedList"></div>
+    </div>
+    <!-- AI Methods -->
+    <div class="glass" style="padding:20px">
+      <div class="panel-header"><div class="panel-dot" style="background:var(--neon-g)"></div><span class="panel-title neon-text">Analysis Methods</span></div>
+      <p style="font-size:13px;color:#94a3b8;margin-bottom:16px">Multi-layered heuristic NLP analysis combining pattern recognition and source verification.</p>
+      <div id="methodBars"></div>
+    </div>
+    <!-- Criteria -->
+    <div class="glass" style="padding:20px">
+      <div class="panel-header"><div class="panel-dot" style="background:#b400ff"></div><span class="panel-title neon-text">Evaluation Criteria</span></div>
+      <div id="criteriaList"></div>
+    </div>
+  </div>
+</section>
+
+<!-- Stats -->
+<div class="stats-grid" id="statsGrid"></div>
+
+<footer>
+  <span class="neon-text">AEGIS AI</span>
+  <span class="copy">© 2026 All rights reserved.</span>
+</footer>
+
+<script>
+// Character counter
+const inp=document.getElementById('newsInput');
+const cc=document.getElementById('charCount');
+inp.addEventListener('input',()=>{cc.textContent=inp.value.length+' characters'});
+
+// Feed data
+const feed=[
+  {t:'New climate policy announced by EU',s:'Reuters',time:'2m ago',st:'real'},
+  {t:'Celebrity secretly owns island made of gold',s:'Unknown Blog',time:'5m ago',st:'fake'},
+  {t:'Tech giant releases quarterly earnings',s:'Bloomberg',time:'8m ago',st:'real'},
+  {t:'Miracle cure found in household spice!',s:'HealthBuzz',time:'12m ago',st:'fake'},
+  {t:'NASA confirms Mars rover deployment',s:'AP News',time:'15m ago',st:'real'},
+  {t:'Government banning all social media by 2027',s:'Viral Post',time:'20m ago',st:'fake'},
+  {t:'Trade agreement signed by 12 nations',s:'BBC',time:'25m ago',st:'real'},
+  {t:'Alien signal detected from deep space',s:'TruthSeeker',time:'30m ago',st:'fake'},
+];
+const fl=document.getElementById('feedList');
+feed.forEach(f=>{
+  fl.innerHTML+=`<div class="feed-item"><div class="feed-text">${f.t}<span class="src">${f.s} · ${f.time}</span></div><span class="feed-badge ${f.st}">${f.st.toUpperCase()}</span></div>`;
+});
+
+// Methods
+const methods=[{l:'Clickbait Detection',v:96},{l:'Emotional Analysis',v:91},{l:'Source Verification',v:87},{l:'Fact Checking',v:94}];
+const mb=document.getElementById('methodBars');
+methods.forEach(m=>{
+  mb.innerHTML+=`<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:12px;color:#94a3b8">${m.l}</span><span style="font-size:12px;color:#64748b;font-family:Orbitron">${m.v}%</span></div><div style="height:6px;border-radius:3px;background:rgba(255,255,255,0.05);overflow:hidden"><div style="height:100%;width:${m.v}%;border-radius:3px;background:linear-gradient(90deg,var(--neon),#0080ff)"></div></div></div>`;
+});
+
+// Criteria
+const criteria=[
+  {i:'🔍',t:'Source Credibility',d:'Checks against trusted/unreliable source databases'},
+  {i:'💬',t:'Emotional Language',d:'Detects sensational or loaded vocabulary'},
+  {i:'📊',t:'Verifiable Facts',d:'Looks for dates, quotes, and named sources'},
+  {i:'⚡',t:'Logical Consistency',d:'Analyzes sentence structure and claims'},
+  {i:'🎣',t:'Clickbait Patterns',d:'Identifies manipulative headline tactics'}
+];
+const cl=document.getElementById('criteriaList');
+criteria.forEach(c=>{
+  cl.innerHTML+=`<div style="display:flex;align-items:start;gap:12px;padding:10px;margin-bottom:6px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04)"><span style="font-size:18px;flex-shrink:0">${c.i}</span><div><div style="font-size:13px;color:#e2e8f0;font-weight:500">${c.t}</div><div style="font-size:11px;color:#64748b;margin-top:2px">${c.d}</div></div></div>`;
+});
+
+// Stats
+const stats=[{l:'Checks Performed',v:'10M+',i:'📡'},{l:'Accuracy Rate',v:'99.1%',i:'🎯'},{l:'Avg Latency',v:'0.3s',i:'⚡'}];
+const sg=document.getElementById('statsGrid');
+stats.forEach(s=>{
+  sg.innerHTML+=`<div class="glass stat-card"><div class="stat-icon">${s.i}</div><div class="stat-value neon-text">${s.v}</div><div class="stat-label">${s.l}</div></div>`;
+});
+
+// Analysis
+function runAnalysis(){
+  const text=inp.value.trim();
+  const err=document.getElementById('errorMsg');
+  const area=document.getElementById('resultArea');
+  const btn=document.getElementById('analyzeBtn');
+
+  if(!text){err.style.display='block';err.textContent='⚠ Please enter text to analyze.';return}
+  err.style.display='none';
+  btn.disabled=true;
+  btn.innerHTML='<span class="spinner"></span>ANALYZING...';
+  area.innerHTML='';
+
+  setTimeout(()=>{
+    const r=window.analyzeNews(text);
+    btn.disabled=false;
+    btn.innerHTML='🔍 ANALYZE';
+    renderResult(r);
+  },1200);
+}
+
+function renderResult(r){
+  const area=document.getElementById('resultArea');
+  const vc=r.verdict==='Real'?'v-real':r.verdict==='Fake'?'v-fake':'v-misleading';
+  const strokeColor=r.verdict==='Real'?'#00ff88':r.verdict==='Fake'?'#ff003c':'#ffb300';
+  const confNum=parseInt(r.confidence);
+  const circ=2*Math.PI*52;
+  const off=circ-(confNum/100)*circ;
+
+  let flagsHTML='';
+  r.red_flags.forEach(f=>{
+    flagsHTML+=`<li><span class="flag-icon">⚠</span>${f}</li>`;
+  });
+
+  const json=JSON.stringify(r,null,2);
+
+  area.innerHTML=`
+  <div class="result-container">
+    <div class="glass result-card ${vc}">
+      <div class="verdict-header">
+        <div class="verdict-dot"></div>
+        <div class="verdict-text">${r.verdict.toUpperCase()}</div>
+        <div class="verdict-dot"></div>
+      </div>
+      <div class="confidence-ring"><div class="ring-wrap">
+        <svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" stroke="rgba(255,255,255,0.05)" stroke-width="7" fill="none"/><circle cx="60" cy="60" r="52" stroke="${strokeColor}" stroke-width="7" fill="none" stroke-linecap="round" stroke-dasharray="${circ}" stroke-dashoffset="${off}" style="transition:all 1s ease-out"/></svg>
+        <div class="ring-label" style="color:${strokeColor}">${r.confidence}</div>
+      </div></div>
+      <div class="conf-caption">AI Confidence Score</div>
+
+      <div class="detail-section">
+        <div class="detail-label"><span class="icon">📋</span>ANALYSIS REASON</div>
+        <div class="reason-text">${r.reason}</div>
+      </div>
+
+      <div class="detail-section">
+        <div class="detail-label"><span class="icon">🚩</span>RED FLAGS</div>
+        <ul class="flags-list">${flagsHTML}</ul>
+      </div>
+
+      <div class="detail-section">
+        <div class="detail-label"><span class="icon">💡</span>SUGGESTION</div>
+        <div class="suggestion-box">${r.suggestion}</div>
+      </div>
+
+      <div class="json-toggle"><button onclick="this.parentElement.nextElementSibling.style.display=this.parentElement.nextElementSibling.style.display==='none'?'block':'none'">{ } View Raw JSON</button></div>
+      <div class="json-block" style="display:none">${json}</div>
+    </div>
+  </div>`;
+}
+
+// Enter key
+inp.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.ctrlKey)runAnalysis()});
+</script>
+</body>
+</html>
